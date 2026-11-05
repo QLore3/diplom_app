@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f0">
+  <meta name="description" content="Учебный DevOps-стенд: инфраструктура, Kubernetes и путь релиза. С танцующим котиком.">
+  <title>Диплом / от коммита до кластера</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Перейти к содержимому</a>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="Диплом, главная"><span class="brand-mark">d<span>_</span></span><span>диплом<span class="brand-slash"> / </span><span class="brand-sub">devops</span></span></a>
+      <nav aria-label="Основная навигация"><a href="#architecture">Архитектура</a><a href="#release">Путь релиза</a><a href="https://github.com/QLore3/diplom_app" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav>
+      <span class="version-pill"><span class="status-dot"></span><span data-version>dev</span></span>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="small-line"></span> УЧЕБНЫЙ ПРОЕКТ · YANDEX CLOUD</p>
+          <h1 id="hero-title">От коммита<br>до кластера.<br><em>С котиком.</em></h1>
+          <p class="hero-description">Инфраструктура как код, свой Kubernetes<br class="desktop-break"> и понятный путь каждой новой версии.</p>
+          <div class="hero-actions"><a class="button button-dark" href="#architecture">Заглянуть под капот <span aria-hidden="true">↓</span></a><span class="hero-note">Всё в Git.<br>Почти всё серьёзно.</span></div>
+          <div class="stack-tags" aria-label="Технологии"><span>Terraform</span><span>Ansible</span><span>Kubernetes</span><span>nginx</span></div>
+        </div>
+        <aside class="cat-card" aria-label="Талисман проекта">
+          <div class="cat-card-top"><span class="cat-label"><span class="status-dot"></span> ОТДЕЛ МОРАЛЬНОЙ ПОДДЕРЖКИ</span><span class="cat-number">№ 001</span></div>
+          <div class="cat-stage"><img id="dancing-cat" src="assets/dancing-cat.gif" alt="Котик танцует и поддерживает дипломный проект" width="500" height="550"><div id="cat-rest" class="cat-rest" hidden><span aria-hidden="true">☕</span><strong>Котик на перерыве.</strong><span>Даже у SRE должен быть отдых.</span></div><span class="cat-stamp" aria-hidden="true">100%<br>GOOD VIBES</span></div>
+          <div class="cat-caption"><div><h2>Главный по стабильности</h2><p>Пока котик танцует — диплом движется.</p></div><button id="cat-toggle" class="icon-button" type="button" aria-label="Отправить котика на перерыв" aria-pressed="false">Ⅱ</button></div>
+          <button id="applause" class="applause" type="button"><span>Похлопать котику <span aria-hidden="true">↗</span></span><span id="applause-count" aria-live="polite">0</span></button>
+        </aside>
+      </section>
+
+      <section class="numbers" aria-label="Параметры учебного стенда"><div><strong>03</strong><span>ноды в кластере</span></div><div><strong>02</strong><span>прерываемых worker</span></div><div><strong>20<span>%</span></strong><span>гарантированная доля CPU</span></div><div><strong>∞</strong><span>танцевальных итераций</span></div></section>
+
+      <section id="architecture" class="section" aria-labelledby="architecture-title">
+        <div class="section-heading"><div><p class="eyebrow">01 / АРХИТЕКТУРА</p><h2 id="architecture-title">Небольшой стенд.<br>Всё на своих местах.</h2></div><p>Нажми на компонент,<br>чтобы узнать его роль.</p></div>
+        <div class="architecture-card">
+          <div class="topology" aria-label="Компоненты инфраструктуры">
+            <div class="connection horizontal" aria-hidden="true"></div><div class="connection branch" aria-hidden="true"></div>
+            <button class="node node-iac" data-component="terraform" aria-pressed="false"><span class="node-icon" aria-hidden="true">{ }</span><span class="node-title">Terraform</span><span class="node-sub">Инфраструктура как код</span><span class="node-tag">VPC + S3 STATE</span></button>
+            <button class="node node-control selected" data-component="control" aria-pressed="true"><span class="node-icon" aria-hidden="true">⎈</span><span class="node-title">Control plane</span><span class="node-sub">Центр управления</span><span class="node-tag">ZONE A</span></button>
+            <div class="worker-stack"><button class="node node-worker" data-component="worker1" aria-pressed="false"><span class="worker-index">01</span><span><span class="node-title">Worker</span><span class="node-sub">zone a · preemptible</span></span><span class="node-dot" aria-hidden="true"></span></button><button class="node node-worker" data-component="worker2" aria-pressed="false"><span class="worker-index">02</span><span><span class="node-title">Worker</span><span class="node-sub">zone d · preemptible</span></span><span class="node-dot" aria-hidden="true"></span></button></div>
+          </div>
+          <div class="component-detail" aria-live="polite"><span id="component-label" class="detail-label">CONTROL PLANE</span><div><h3 id="component-title">Одна точка управления</h3><p id="component-description">API server, scheduler и etcd управляют кластером. Control plane работает на непрерываемой ВМ; обычные приложения размещаются на workers.</p></div><span class="detail-resource">2 vCPU · 2 ГБ RAM<br>10 ГБ HDD · CPU 20%</span></div>
+        </div>
+        <div class="architecture-footnote"><span><span class="legend-dot"></span> Kubernetes 1.36.6 · containerd · Flannel</span><span>Схема конфигурации стенда</span></div>
+      </section>
+
+      <section id="release" class="section release-section" aria-labelledby="release-title">
+        <div class="section-heading"><div><p class="eyebrow">02 / ПУТЬ РЕЛИЗА</p><h2 id="release-title">Каждой версии —<br>свой маршрут.</h2></div><p>От исходников до контейнера.<br>Без магии, по шагам.</p></div>
+        <div class="pipeline" aria-label="Этапы доставки приложения"><button data-step="commit" class="pipeline-step active" aria-pressed="true"><span>01</span><strong>Commit</strong><small>GitHub</small></button><span class="pipeline-arrow" aria-hidden="true">→</span><button data-step="build" class="pipeline-step" aria-pressed="false"><span>02</span><strong>Build</strong><small>Dockerfile</small></button><span class="pipeline-arrow" aria-hidden="true">→</span><button data-step="registry" class="pipeline-step" aria-pressed="false"><span>03</span><strong>Registry</strong><small>GHCR</small></button><span class="pipeline-arrow" aria-hidden="true">→</span><button data-step="deploy" class="pipeline-step" aria-pressed="false"><span>04</span><strong>Deploy</strong><small>Kubernetes</small></button><span class="pipeline-arrow" aria-hidden="true">→</span><button data-step="verify" class="pipeline-step" aria-pressed="false"><span>05</span><strong>Verify</strong><small>Версия на странице</small></button></div>
+        <div class="pipeline-explanation" aria-live="polite"><span class="mono" id="step-command">git push</span><p id="step-description">Изменения приложения отправляются в отдельный репозиторий. Коммит становится отправной точкой новой версии.</p></div>
+      </section>
+
+      <section class="build-strip" aria-label="Информация о сборке"><div><span class="build-icon" aria-hidden="true">↳</span><div><span class="eyebrow">ВЫ СМОТРИТЕ СБОРКУ</span><strong data-version>dev</strong></div></div><div class="build-meta"><span>COMMIT <code id="commit">local</code></span><span>СОБРАНО <time id="built-at">локальная версия</time></span></div><button id="copy-version" type="button" class="copy-button">Скопировать версию <span aria-hidden="true">⧉</span></button><span id="copy-status" class="sr-only" role="status"></span></section>
+    </main>
+    <footer><span>Сделано для диплома. И немного для котика.</span><div><a href="https://github.com/QLore3/diplom_stand" target="_blank" rel="noopener noreferrer">Инфраструктура ↗</a><a href="https://github.com/QLore3/diplom_app" target="_blank" rel="noopener noreferrer">Приложение ↗</a></div><span class="footer-sign">commit · build · meow</span></footer>
+  </div>
+</body>
+</html>

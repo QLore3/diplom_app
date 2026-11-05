@@ -1,0 +1,7 @@
+# Local checks and credentials
+.local/
+.env
+.env.*
+/docs/
+/scripts/
+node_modules/
