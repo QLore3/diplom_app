@@ -1,22 +1,24 @@
-name: Build and publish image
+name: Build, publish and deploy
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
-
-concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+      version: ${{ steps.metadata.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -25,8 +27,15 @@ jobs:
         id: metadata
         shell: bash
         run: |
+          version="sha-${GITHUB_SHA::7}"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            version="$GITHUB_REF_NAME"
+            [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]] || {
+              echo 'Release tag must have the form v1.0.0 or v1.0.0-rc.1'; exit 1;
+            }
+          fi
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-          echo "version=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build image
         env:
@@ -34,11 +43,14 @@ jobs:
           VERSION: ${{ steps.metadata.outputs.version }}
         run: |
           docker build --build-arg APP_VERSION="$VERSION" --build-arg VCS_REF="$GITHUB_SHA" \
-            --tag "$IMAGE:sha-$GITHUB_SHA" --tag "$IMAGE:latest" .
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$IMAGE:sha-$GITHUB_SHA" .
 
       - name: Check container
         env:
           IMAGE: ${{ steps.metadata.outputs.image }}
+          VERSION: ${{ steps.metadata.outputs.version }}
         run: |
           docker run -d --name app --publish 127.0.0.1:8080:8080 --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=16m --cap-drop ALL \
@@ -53,14 +65,106 @@ jobs:
           curl --fail --silent --output /dev/null http://127.0.0.1:8080/
           curl --fail --silent --output /dev/null http://127.0.0.1:8080/assets/dancing-cat.gif
           curl --fail --silent http://127.0.0.1:8080/version.json | \
-            python3 -c 'import json, os, sys; assert json.load(sys.stdin)["revision"] == os.environ["GITHUB_SHA"]'
+            python3 -c 'import json, os, sys; v=json.load(sys.stdin); assert v["revision"] == os.environ["GITHUB_SHA"]; assert v["version"] == os.environ["VERSION"]'
 
       - name: Publish to GHCR
+        id: publish
         env:
           IMAGE: ${{ steps.metadata.outputs.image }}
+          VERSION: ${{ steps.metadata.outputs.version }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker push "$IMAGE:sha-$GITHUB_SHA"
-          docker push "$IMAGE:latest"
-          echo "Published: \`$IMAGE:sha-$GITHUB_SHA\` and \`$IMAGE:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            docker tag "$IMAGE:sha-$GITHUB_SHA" "$IMAGE:$VERSION"
+            docker push "$IMAGE:$VERSION"
+          fi
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            docker tag "$IMAGE:sha-$GITHUB_SHA" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
+          reference=$(docker image inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
+          [[ "$reference" == "$IMAGE@sha256:"* ]]
+          echo "image=$reference" >> "$GITHUB_OUTPUT"
+          echo "Published: \`$reference\`, version \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-app
+      cancel-in-progress: false
+    env:
+      IMAGE: ${{ needs.publish.outputs.image }}
+      VERSION: ${{ needs.publish.outputs.version }}
+      APP_URL: ${{ vars.PUBLIC_APP_URL }}
+    steps:
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wireguard-tools
+          curl --fail --silent --show-error --location \
+            https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl -o "$RUNNER_TEMP/kubectl"
+          curl --fail --silent --show-error --location \
+            https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl.sha256 -o "$RUNNER_TEMP/kubectl.sha256"
+          (cd "$RUNNER_TEMP"; echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check)
+          sudo install -m 0755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
+
+      - name: Connect to Kubernetes API
+        env:
+          WIREGUARD_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
+          DELIVERY_KUBECONFIG: ${{ secrets.DELIVERY_KUBECONFIG }}
+        run: |
+          umask 077
+          export KUBECONFIG="$RUNNER_TEMP/delivery-kubeconfig"
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
+          printf '%s\n' "$DELIVERY_KUBECONFIG" > "$KUBECONFIG"
+          printf '%s\n' "$WIREGUARD_CONFIG" > "$RUNNER_TEMP/wg-ci.conf"
+          sudo install -m 0600 "$RUNNER_TEMP/wg-ci.conf" /etc/wireguard/wg-ci.conf
+          sudo wg-quick up wg-ci
+          for attempt in $(seq 1 10); do
+            if kubectl --request-timeout=10s get deployment/diplom-app -o name; then exit 0; fi
+            sleep 3
+          done
+          exit 1
+
+      - name: Deploy release and verify public version
+        run: |
+          previous=$(kubectl --request-timeout=20s get deployment/diplom-app -o jsonpath='{.spec.template.spec.containers[?(@.name=="nginx")].image}')
+          [[ "$previous" == ghcr.io/qlore3/diplom_app@sha256:* ]]
+          rollback() {
+            status=$?
+            if [[ "$status" != 0 ]]; then
+              echo 'Release failed; restoring previous image.'
+              kubectl --request-timeout=20s set image deployment/diplom-app "nginx=$previous" && \
+                kubectl rollout status deployment/diplom-app --timeout=240s || \
+                echo 'Rollback failed: administrator intervention required.'
+              echo "Release failed; rollback attempted to \`$previous\`." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT
+          kubectl --request-timeout=20s set image deployment/diplom-app "nginx=$IMAGE"
+          kubectl rollout status deployment/diplom-app --timeout=240s
+          verified=false
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --max-time 10 "$APP_URL/healthz" && \
+               curl --fail --silent --show-error --max-time 10 "$APP_URL/version.json" | \
+               jq -e --arg version "$VERSION" --arg revision "$GITHUB_SHA" \
+                 '.version == $version and .revision == $revision'; then
+              verified=true; break
+            fi
+            sleep 3
+          done
+          [[ "$verified" == true ]]
+          echo "Deployed \`$VERSION\`: \`$IMAGE\` → $APP_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Disconnect and remove credentials
+        if: always()
+        run: |
+          if ip link show wg-ci >/dev/null 2>&1; then sudo wg-quick down wg-ci; fi
+          sudo rm -f /etc/wireguard/wg-ci.conf
+          rm -f "$RUNNER_TEMP/delivery-kubeconfig" "$RUNNER_TEMP/wg-ci.conf"
